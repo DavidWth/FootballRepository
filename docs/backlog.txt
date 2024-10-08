@@ -1,0 +1,133 @@
+1Requirements
+Domain model
+Football statistics / metrics / KPIs
+    - define all statistics and show calculation based on domain model
+2Analysis & Design
+Data model
+1Strategy for ETL including raw data ingestion and providing doamin model as physical model
+2General extraction rules für web-based data
+    - get data, if possible 1:1, as raw as possible
+    - enable for each data item to be stored as single element (in JSON), but also all items belonging to a container (dedicated player > all players from a team)
+    - data transformation into data model is done aftwerwards
+
+
+Data access strategy for clients / customers
+Analytics
+    - specify environment / tools on how to deal best with data
+        - JSON and Pandas' data frames (+NumPy) 
+3Architecture
+4Implementation
+Python Dictionarys, JSON, MongoDB
+    Specification for data model entities like player and how they "behave" in documents / NoSql data structures
+    - specify design for IDs in dicts
+    - embed / relate data mainly in MongoDB (eg stadium is own document but used in club / teams document)
+
+5Testing
+Testing Strategy
+    - define how to deal with acceptance, integration and unit testing
+    - Python: how to deal with private methods
+    - Test data repository
+unittest
+    parameterize tests
+
+
+6bugs/CRs/new features
+1Seaason processing
+    -   make overall process configurable by enabling parameters for season, competition,
+    -   enable step-by-step processing, not only all or nothing 
+Players
+    Player names
+        - split in first / last names                                                       OK
+        - relate names in goals / assists to "real" names / players                         OK
+        + implement e2e getting player names from each teams
+    Add Players, man of the match, referree and referee ratings per game                    OK
+        > calculate based on players' ratings team rating per game, add own substructure    
+Teams
+    Add team's trainer to the profile                                                       OK
+    Add player's rating                                                                     OK
+Match
+    Add player of the match                                                                 OK
+    Add referee and rating                                                                  OK
+    Add match rating                                                                        OK
+    Add match id        
+Goals / Assists
+    - add goal / assist id                                                                  OK
+    - add match id to enable back reference
+Overarching
+    - club code > add also to fixtures, players and goals
+
+bug: get_players    >   missing players bc scraping is missing attributes 
+    >>> add better error handling for all methods, add additional tests
+    >>> currently workaround by removing empty players
+Mobile development  >   maintain GitHub clean, add docu there, use Atlas MongoDB
+Bugs
+Goals   >   only last fixture goals in data / store                                         OK
+
+Player names
+    - Case1 >   Matheus Cunha (Matheus Santos Carneiro de Cunha)
+    - Case2 >   Tuta (Lucas Silva Melo)
+Players repository Analysis
+    Use https://www.kicker.de/augsburg-gegen-mgladbach-2023-bundesliga-4861973/schema as match case
+    Use
+        Tore: 4:4 Cvancara (Elfmeter), Rechtsschuss, Borges Sanches     > scorer name has link to player, assist giver only text 
+        Aufstellung: shows only team at end of game
+        Wechsel: shows also the players which have been substituted     > substituted player have links
+            < Borges Sanches
+            > Netz
+
+    Use 
+        Teams
+        1Season teams        >   https://www.kicker.de/{competition}/teams/{season}
+            - acts like a controller, saving only team urls for next steps
+        2Teams, + squad / players, + stadium >   
+            1team info, already exists
+            2squad, player list per team / urls again acts like a controller storing player urls (see 3Player details)  > https://www.kicker.de/{team}/kader/{competition}/{season}
+            3stadium, added to team
+        3Player details      >   https://www.kicker.de/{player}/spieler/{competition}/{season}/{team}
+            - player detail level, typical info / detail level where domain data is scraped from 
+kicker  >>> Match events analysis
+        e2e season fixture
+        1Fixtures (get all fixtures from matchday 1 to 34)  >   https://www.kicker.de/{competition}/spieltag/{season}/{matchday}
+            - iterate through all 34 matchdays and get links to dedicated matches 
+        2On matchday page, get all fixture links    >   https://www.kicker.de/{competition}/spieltag/{season}/{matchday}
+            - iterate through all 9 fixture links to dive into match and schema info pages
+        3On 
+            - match info page   >   https://www.kicker.de/bremen-gegen-bayern-2023-bundesliga-4861795/spielinfo >   date, attendance, stadium
+            - match schema page >   https://www.kicker.de/bremen-gegen-bayern-2023-bundesliga-4861795/schema    >   goals, time, ht / ft score, assists
+                - fixture, goals and assists are own attributes in the structure
+                - scorer and assist giver need to be x-checked with player repository to retrieve IDs 
+Transfermarkt   >>> Match events analysis
+    Transfermarkt  
+        Teams
+        1Season teams        >   https://www.transfermarkt.com/{competition}/startseite/wettbewerb/{tm_id}/plus/?saison_id={year}
+            - acts like a controller, saving only team urls for next steps
+        2Teams, + squad / players, + stadium >   
+            1team info, already exists  >   https://www.transfermarkt.com/fc-bayern-munchen/datenfakten/verein/27
+            2squad, player list per team / urls again acts like a controller storing player urls (see 3Player details)  > https://www.transfermarkt.com/bayern-munich/kader/verein/27/plus/1/galerie/0?saison_id=2023
+            3stadium, added to team >   https://www.transfermarkt.com/fc-bayern-munchen/stadion/verein/27/saison_id/2024
+        3Player details      >   https://www.transfermarkt.com/alphonso-davies/profil/spieler/424204
+            - player detail level, typical info / detail level where domain data is scraped from 
+
+
+        e2e season fixture
+        1Fixtures (get all fixtures from matchday 1 to 34)  >   https://www.kicker.de/{competition}/spieltag/{season}/{matchday}
+            - iterate through all 34 matchdays and get links to dedicated matches 
+        2On matchday page, get all fixture links    >   https://www.kicker.de/{competition}/spieltag/{season}/{matchday}
+            - iterate through all 9 fixture links to dive into match and schema info pages
+        3On 
+            - match info page   >   https://www.kicker.de/bremen-gegen-bayern-2023-bundesliga-4861795/spielinfo >   date, attendance, stadium
+            - match schema page >   https://www.kicker.de/bremen-gegen-bayern-2023-bundesliga-4861795/schema    >   goals, time, ht / ft score, assists
+                - fixture, goals and assists are own attributes in the structure
+                - scorer and assist giver need to be x-checked with player repository to retrieve IDs 
+
+Implementation steps
+1 Season processing
+    Kicker: overall processing takes to long, need to enable scraping / saving of assets to file / db
+        Granularity? clubs (18), stadiums (18), players (18xX), fixtures (18/2x34), goals, assists
+        Iterator
+            clubs, stadium  >   clubs overview pages
+            Players         >   clubs overview pages > player's detail pages
+            fixtures        >   MD 1-34 pages   >   match details pages
+            goals/assists   >   MD 1-34 pages   >   match details pages
+        Updates?
+
