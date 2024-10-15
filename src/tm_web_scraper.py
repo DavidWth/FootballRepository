@@ -4,13 +4,12 @@ from datetime import datetime
 
 import random
 import time
-from selenium import webdriver
-from webdriver_manager.chrome import ChromeDriverManager
 
-from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.chrome.service import Service
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
 
 from selenium.webdriver.common.by import By
+from selenium.common.exceptions import TimeoutException
 
 import re
 
@@ -19,203 +18,195 @@ from import_export_json import save_to_json
 class TransfermarktScraper(WebScraper):
     def __init__(self):
         super().__init__()
-
-    def get_fixture_links(self, url):
-        """
-        Input: url like: https://www.kicker.de/{competition}}/{spieltag}/{season}]/{matchday}}
-        Output: list of urls pointing to the 
-
-        """
-        # "https://www.kicker.de/bundesliga/spieltag/2023-24/1"
-        fixture_links = []
-
-        try:
-            self.load_page(url)
-
-            fixture_elements = self.driver.find_elements(By.XPATH, 
-                                                         "//a[@class='kick__v100-scoreBoard kick__v100-scoreBoard--standard ']") 
-            for element in fixture_elements:
-                link = element.get_attribute("href")
-                fixture_links.append(link)
-
-            print(f"Fixture links >>> {fixture_links}")
-        except Exception as e:
-            print(f"Error getting fixture links: {e}")
-        return fixture_links
     
-    def get_match_details(self, url):
-        match_info = {}
+    def get_matchday_details(self, url):
+        """
+        Transfermarkt > Season/Matchday > Matchday 1-n
+        Prepares a whole matchday using: "https://www.transfermarkt.com/bundesliga/spieltag/wettbewerb/L1/saison_id/2023/spieltag/1"
+        """
+        match_events = []
         try:
             self.load_page(url)
-            match = self.driver.find_element(By.XPATH, 
-                                            "//div[@class='kick__v100-gameCell kick__v100-gameCell--big']")
+            all_matches = self.driver.find_elements(By.XPATH, 
+                                            "//div[@class='box']/table[@style='border-top: 0 !important;']/child::tbody")
             
-            teams = match.find_elements(By.XPATH, 
-                                            "//div[@class='kick__v100-gameCell kick__v100-gameCell--big']/descendant::div[@class='kick__v100-gameCell__team__name']")
 
-            results = match.find_elements(By.XPATH, 
-                                            "//div[@class='kick__v100-gameCell kick__v100-gameCell--big']/descendant::div[contains(@class, 'kick__v100-scoreBoard__scoreHolder ')]")
-            
-            ratings = match.find_elements(By.XPATH, 
-                                          "//div[@class='kick__gameinfo kick__module-margin']/child::div")
+            for match in all_matches:
+                details = match.find_elements(By.XPATH, "child::tr")
+                events = []
+                for row in details:
+                    if len(row.get_attribute('innerText')) >= 1:
+                        #events.append(row.get_attribute('innerText').replace('\xa0', ' ').replace('\t', ' ').strip())
+                        events.append(row.get_attribute('innerText'))
+                        print(f"Match info >>> {row.get_attribute('innerText').strip()}")
 
-            home_team = teams[0].get_attribute("innerText")
-            away_team = teams[1].get_attribute("innerText")
-            half_time_score = results[1].get_attribute("innerText").replace('\n', '')
-            full_time_score = results[0].get_attribute("innerText").replace('\n', '')
-
-            fixture_info = self.driver.find_elements(By.XPATH, 
-                                                    "//div[@class='kick__gameinfo__item kick__gameinfo__item--game-preview']/descendant::div[contains(@class, 'kick__gameinfo-block')]")
-            for element in fixture_info:
-                key, value = self._split_to_key_value(element.get_attribute("innerText"))
-                match_info[key] = value
-
-            match_info["home_team"] = home_team
-            match_info["away_team"] = away_team
-            match_info["half_time_score"] = half_time_score
-            match_info["full_time_score"] = full_time_score
-
-            match_info = self._replace_keys(match_info)
-            date, time = self._convert_datetime_string(match_info["date"])
-
-            match_info["date"] = date
-            match_info["local_time"] = time
-
-            attendance, is_soldOut = (int(match_info["attendance"].split()[0].replace('.', '')), '(ausverkauft)' in match_info["attendance"])
-            match_info["attendance"] = attendance
-            match_info["is_soldOut"] = is_soldOut
-
-            rating = ratings[0].get_attribute("innerText").split('\n')[0].strip().replace(',', '.')
-            match_info["rating"] = rating
-
-            man_of_match = ratings[1].get_attribute("innerText").split('\n') #[0].strip() #, rating[1].split('\n')[2]]
-            match_info["man_of_match"] = [man_of_match[2], float(re.sub("[^0-9,]", "", man_of_match[4]).replace(",","."))]
-
-            referee = ratings[2].get_attribute("innerText").split('\n')
-            match_info["referee"] = [referee[2], float(re.sub("[^0-9,]", "", referee[4]).replace(",","."))]
-
-
-            print(f"Match info >>> {match_info}")
+                match_events.append(events)
+            print(f"Match info >>> {match_events}")
         except Exception as e:
             print(f"Error getting match info: {e}")
 
-        return match_info
+        return match_events
     
-    def get_match_goals_info(self, url):
-        """ Navigates to a dedicated match' schema page and gets all scored goals, corresponding scoring minute, scoring team, scorer by name and the assist provider in raw format (as provided on the page).
-        >>> browser = KickerScraper()
-        >>> url_me = "https://www.kicker.de/augsburg-gegen-mgladbach-2023-bundesliga-4861973/schema"
-        >>> match_goals = browser.get_match_goals(url_me)
-        >>> title = browser.get_driver().title
-        'Spielschema' in title
-        >>> count = len(match_goals)
-        8
+    def get_match_details(self, url):
         """
+        Transfermarkt > Match Sheet > Fixture info
+        Data: Teams, Matchday, Date, result (interim)
+        https://www.transfermarkt.com/spielbericht/index/spielbericht/4095967
+        """
+        match_details = []
         try:
             self.load_page(url)
-            fixture_schema = self.driver.find_elements(By.XPATH, 
-                                                      "//div[@class='kick__goals kick__goals--ingame ']/descendant::div[contains(@class, 'kick__goals__row')]")
+            match_details = self.driver.find_elements(By.XPATH, 
+                                            "//div[@class='box-content']/child::div/child::*")
             
-            goal_info = []
-            for element in fixture_schema:
-                goals = element.find_elements(By.XPATH,
-                                            "child::*")
-                goal_event = {}
-                for i, goal in enumerate(goals):
-                    info = goal.get_attribute("innerText")
-                    goal_event[i] = info
-                        
-                goal_info.append(goal_event)      
 
-            #goal_info = self.transform_goals(goal_info, home_team, away_team)          
-            #fixture["goals"] = goal_info
-            print(f"Goal info >>> {goal_info}")
+            for match in match_details:
+                match_details.append(match.get_attribute("innerText"))
+
+            print(f"Match info >>> {match_details}")
         except Exception as e:
-            print(f"Error getting goals: {e}")
-    
-        return goal_info
-    
-    def get_all_per_season(self, url):
-        """
-        Acts as a controller to create full structure consisting of teams, stadiums, and player profiles
-        Steps: 
-            1   https://www.kicker.de/bundesliga/teams/2023-24
-            2   https://www.kicker.de/bundesliga/spieltag/2023-24/1
-            3   
-                https://www.kicker.de/bremen-gegen-bayern-2023-bundesliga-4861795/analyse
-                https://www.kicker.de/bremen-gegen-bayern-2023-bundesliga-4861795/spielinfo
-                https://www.kicker.de/bremen-gegen-bayern-2023-bundesliga-4861795/schema
+            print(f"Error getting match info: {e}")
 
+        return match_details
+    
+    def get_goals_details_per_match(self, url):
         """
-        bl_season = {}
-        # Open browser
+
+        https://www.transfermarkt.com/spielbericht/index/spielbericht/4095967
+        "//div[@id='sb-tore']/ul/li/child::div/child::div"
+        """
+        goals_details = []
         try:
-            # bl_season["competition"] = "Bundesliga"
-            # bl_season["location"] = "Germany"
-            # bl_season["season"] = "2023-24"
+            self.load_page(url)
+            goals_elements = self.driver.find_elements(By.XPATH, 
+                                            "//div[@id='sb-tore']/ul/li/child::div")
 
-            # navigate to bundesliga clubs starting page
-            teams_info = self.get_teams_info_per_competition_and_season(url)
-            print(f"Found {len(teams_info)} teams for season {url.split("/")[-1]}")
+            for elements in goals_elements:
+                rows = elements.find_elements(By.XPATH, "child::div")
+                goal_detail = []
+                for goal in rows:
+                    goal_detail.append(goal.get_attribute('innerText'))
+                    #print(f"Goals details >>> {goal.get_attribute('innerText')}")
+                goals_details.append(goal_detail)
 
-            teams = []
-            players = []
-            for team_info in teams_info:
-                # Call each team page and save all team and player information
-                team = self.get_team_profile(team_info["info"])
-
-                # Call each stadium page and save all team and player informatio
-                stadium = self.get_stadium_info(team_info["stadium"])
-            
-                # Call all players pages
-                players = self.get_players_profile_from_team(team_info["squad"])
-
-                team["stadium"] = stadium
-                teams.append(team)
-            bl_season["clubs"] = teams
-            bl_season["players"] = players
-
-            season_fixtures = []
-            for md in range(1,3):
-                fixture_links = self.get_fixture_links(f"https://www.kicker.de/bundesliga/spieltag/2023-24/{md}")
-                goals = []
-                matchday = {}
-                matchday["matchday"] = md
-                fixtures = []
-                for fixture in fixture_links:
-                    match_info = self.get_match_details(fixture.replace('analyse', 'spielinfo'))
-                    match_goals_info = self.get_match_goals_info(fixture.replace('analyse', 'schema'))
-                    home_team_scorers, away_team_scorers = self.get_match_scorers_overview(match_goals_info)
-                    match_info["home_team_scorers"] = home_team_scorers
-                    match_info["away_team_scorers"] = away_team_scorers
-
-                    line_up = self.get_match_lineup(fixture.replace('analyse', 'schema'))
-                    goals = goals + self.add_player_ids_to_scoring_events(fixture.replace('analyse', 'schema'), self._transform_goals(match_goals_info, match_info["home_team"], match_info["away_team"]), line_up)
-
-                    team_ratings = self._transform_team_ratings(line_up)
-                    match_info["team_ratings"] = team_ratings
-                    fixtures.append(match_info)
-                matchday["fixtures"] = fixtures
-
-                season_fixtures.append(matchday)
-
-            bl_season["season_fixtures"] = season_fixtures
-
-            # Add 'id' to each dictionary
-            for i, goal in enumerate(goals, start=1):
-                # Create a new dictionary with the 'id' at the first position
-                goals[i-1] = {"id": i, **goal}
-
-            bl_season["goals"] = goals
-            print(f"BL season >>> {bl_season}")
+            print(f"Goal info >>> {goals_details}")
         except Exception as e:
-            print(f"Error getting all teams: {e}")
+            print(f"Error getting match info: {e}")
 
-        file_path = "bl_2324.json"
-        save_to_json(bl_season, file_path)
-        return bl_season
+        return goals_details
+    
+    def get_top_players_per_match(self, url):
+        """
+        https://www.transfermarkt.com/spielbericht/index/spielbericht/4095967
+        "//div[@id='sb-tore']/ul/li/child::div/child::div"
+        """
+        top_players = []
+        try:
+            self.load_page(url)
+            top_players_divs = self.driver.find_elements(By.XPATH, 
+                                            "//div[@id='sb-notenbeste']/descendant::li/child::div")
+            
+
+            for goal in top_players_divs:
+                top_players.append(goal.get_attribute('innerText'))
+
+            print(f"Top players in match >>> {top_players}")
+        except Exception as e:
+            print(f"Error getting match info: {e}")
+
+        return top_players
+    
+    def get_player_ratings_per_match(self, url):
+        """
+        Transfermarkt > Line-Ups > Line-Up tables
+
+        https://www.transfermarkt.com/bayer-04-leverkusen_rb-leipzig/aufstellung/spielbericht/4095970
+        "//div[@class='box']/div[@class='responsive-table']/table/tbody/tr/child::td" > tr
+        """
+        player_ratings = []
+        try:
+            self.load_page(url)
+            player_ratings_rows = self.driver.find_elements(By.XPATH, 
+                                            "//div[@class='box']/div[@class='responsive-table']/table/tbody/tr")
+            
+            for row in player_ratings_rows:
+                details = row.find_elements(By.XPATH, "child::td")
+                events = []
+                for cell in details:
+                    if len(cell.get_attribute('innerText')) >= 1:
+                        events.append(cell.get_attribute('innerText'))
+                player_ratings.append(events)
+
+            print(f"Goal info >>> {player_ratings}")
+        except Exception as e:
+            print(f"Error getting match info: {e}")
+
+        return player_ratings
+    
         
     def get_teams_info_per_competition_and_season(self, url):
+        """
+        Transfermarkt > Season > all participating clubs
+        
+        Input: url pointing to Transfermarkt teams overview page per season: https://www.transfermarkt.com/bundesliga/startseite/wettbewerb/L1/plus/?saison_id=2023
+        Output: list of dictionaries containing clubs name and url: 'name': {team_name}, 'url': {team_url} 
+        {   'name': 'Bayern Munich', 
+            'url': 'https://www.transfermarkt.com/fc-bayern-munchen/startseite/verein/27/saison_id/2023,
+        }
+        """
+        clubs_info = []
+
+        try:
+            self.load_page(url)
+            club_rows = self.driver.find_elements(By.XPATH, 
+                                                "//div[@id='yw1']//tbody/tr/td[@class='hauptlink no-border-links']/a[1]")
+
+            for row in club_rows:
+                club = {}
+
+                href = row.get_attribute("href")
+
+                club['name'] = row.get_attribute("innerText")
+                club['url'] = href
+                clubs_info.append(club)
+                
+            print(f"Club info >>> {clubs_info}")
+        except Exception as e:
+            print(f"Error getting clubs: {e}")
+        return clubs_info
+    
+    def get_club_portrait(self, url):
+        """
+        Transfermarkt > Club Portrait > Stats & Facts
+
+        Input: url pointing to the Kicker team info page: https://www.transfermarkt.com/bundesliga/startseite/wettbewerb/L1/plus/?saison_id=2023
+        Output: dictionary containing player attributes as follows: 'name': {player_name}, 'position': {members_count}, 'dateOfBirth': {dateOfBirth}, 'height': {height}, 'weight': {weight}, 
+        'nation': {citizenship} 
+        {   'name': 'Bayer 04 Leverkusen', 
+            'id': 'bayer-04-leverkusen',
+            'info': 'https://www.kicker.de/bayer-04-leverkusen/info/bundesliga/2023-24', 
+            'squad': 'https://www.kicker.de/bayer-04-leverkusen/kader/bundesliga/2023-24', 
+            'stadium': 'https://www.kicker.de/bayer-04-leverkusen/team-stadion/bundesliga/2023-24'}
+        """
+        # https://www.transfermarkt.com/fc-bayern-munchen/datenfakten/verein/27
+
+        clubs_portrait = {}
+
+        try:
+            self.load_page(url)
+            club_rows = self.driver.find_elements(By.XPATH, 
+                                                "//table[@class='profilheader']/tbody/child::tr/child::*")
+
+            for i in range(0, len(club_rows), 2):
+                clubs_portrait[club_rows[i].get_attribute("innerText")] = club_rows[i+1].get_attribute("innerText")
+                
+            print(f"Club portrait >>> {clubs_portrait}")
+        except Exception as e:
+            print(f"Error getting club portrait: {e}")
+        return clubs_portrait
+
+
+    def get_stadium_overview(self, url):
         """
         Starts at Kicker page with all teams from a dedicated season for a dedicated competition (eg all teams in 1.Bundesliga, season 2023-24).
         The retunrned dictionary contains all relevant links to teams profile page, to the overview page for players and stadium information page.
@@ -229,21 +220,20 @@ class TransfermarktScraper(WebScraper):
             'squad': 'https://www.kicker.de/bayer-04-leverkusen/kader/bundesliga/2023-24', 
             'stadium': 'https://www.kicker.de/bayer-04-leverkusen/team-stadion/bundesliga/2023-24'}
         """
+        # https://www.transfermarkt.com/fc-bayern-munchen/stadion/verein/27/saison_id/2024
+
         clubs_info = []
 
         try:
             self.load_page(url)
             club_rows = self.driver.find_elements(By.XPATH, 
-                                                "//div[@id='yw1']//tbody/tr/td[@class='hauptlink no-border-links']/child::a")
+                                                "//div[@id='yw1']//tbody/tr/td[@class='hauptlink no-border-links']/a[1]")
 
             for row in club_rows:
                 club = {}
 
                 href = row.get_attribute("href")
-
                 club['name'] = row.get_attribute("innerText")
-                club['slug'] = href.split('/')[3]
-                club['id'] = href.split('/')[-1]
                 club['url'] = href
                 clubs_info.append(club)
                 
@@ -251,6 +241,32 @@ class TransfermarktScraper(WebScraper):
         except Exception as e:
             print(f"Error getting clubs: {e}")
         return clubs_info
+    
+    def get_all_players_from_team(self, url):
+        """
+        Transfermarkt > club squad page > player's urls.
+        Returns list with links/urls for all players in the squad.
+
+        Input: url pointing to a Transfermarkt club page with squad for a season: https://www.transfermarkt.com/bundesliga/startseite/wettbewerb/L1/plus/?saison_id=2023
+        Output: list containing urls to all players per club pages: ['url_1', 'url2', ...] 
+        ['https://www.transfermarkt.com/manuel-neuer/profil/spieler/17259', 'https://www.transfermarkt.com/daniel-peretz/profil/spieler/468539', ...]
+        """
+        # https://www.transfermarkt.com/bayern-munich/kader/verein/27/saison_id/2024/plus/1
+
+        players_urls = []
+
+        try:
+            self.load_page(url)
+            player_rows = self.driver.find_elements(By.XPATH, 
+                                                "//div[@id='yw1']//td[@class='hauptlink']/a")
+
+            for player in player_rows:
+                players_urls.append(player.get_attribute("href"))
+
+            print(f"Players' urls >>> {players_urls}")
+        except Exception as e:
+            print(f"Error getting clubs: {e}")
+        return players_urls
     
     def get_players_profile_from_team(self, url):
         """
@@ -301,312 +317,184 @@ class TransfermarktScraper(WebScraper):
     
     def get_player_profile_from_team(self, url):
         """
-        Gets all relevant dedicated player's data on the Kicker player's profile page 
-        Input: url pointing to a Kicker player's profile page: https://www.kicker.de/{player}/spieler/{competition}/{season}/{team}
-        Output: dictionary containing player attributes as follows: 'name': {player_name}, 'position': {members_count}, 'dateOfBirth': {dateOfBirth}, 'height': {height}, 'weight': {weight}, 
-        'nation': {citizenship} 
-        >>> browser = KickerScraper()
-        >>> url_player = "https://www.kicker.de/matthijs-de-ligt/spieler/bundesliga/2023-24/fc-bayern-muenchen"
-        >>> player = browser.get_player_info(url_player)
+        Transfermarkt > Player profile page > Player data
+        Input
+        Output
         """
-        player_info = {}
+        # https://www.transfermarkt.com/alphonso-davies/profil/spieler/424204
+        player_profile = {}
 
         try:
             self.load_page(url)
-            name = self.driver.find_element(By.XPATH, 
-                                                "//div[@class='kick__vita__header__person-name-medium-h1']").get_attribute("innerText")
-            first_name =  self.driver.find_element(By.XPATH, 
-                                                "//div[@class='kick__vita__header__person-name-medium-h1']/span").get_attribute("innerText")
 
-            last_name =  name.replace(first_name, '').strip()
+            name_and_number = self.driver.find_element(By.XPATH, 
+                                                "//h1[@class='data-header__headline-wrapper']")
             
-            try:
-                current_team = self.driver.find_element(By.XPATH,
-                                                    "//div[@class='kick__vita__header__team-name']").get_attribute("innerText")
-            except:
-                current_team = "NA"
-            print(f"Player name >>> {name} playing with >>> {current_team}")
+            player_profile["name_and_jersey"] = name_and_number.get_attribute("innerText")
+            name_info = name_and_number.find_elements(By.XPATH, 
+                                                "//h1[@class='data-header__headline-wrapper']/descendant::*")
+            player_profile["jersey_number"] = name_info[0].get_attribute("innerText")
+            player_profile["last_name"] = name_info[1].get_attribute("innerText")
 
-            player_info["id"] = url.split("/")[3]
-
-            name = name.split("(")
-            if(len(name) == 1):
-                name = name[0].strip()
-            else:
-                name = name[1].replace(")", '')
-
-            player_info["name"] = name
+            player_data = self.driver.find_elements(By.XPATH, 
+                                                "//div[@class='info-table info-table--right-space ']/child::span")
             
-            player_info["first_name"] = first_name.split("(")[0].strip()
-            player_info["last_name"] = last_name
-            player_info["team_id"] = url.split("/")[-1]
-            player_info["current_team"] = current_team.strip()
+            for i in range(0, len(player_data), 2):
+                player_profile[player_data[i].get_attribute('innerText')] = player_data[i+1].get_attribute('innerText')
 
-            player_details = self.driver.find_elements(By.XPATH,
-                                                ("//div[contains(@class,'kick__vita__header__person-detail-kvpair-info')]"))
 
-            for pd in player_details:
-                item = pd.get_attribute("innerText")
-                if ":" in item:
-                    value = item.split(':')[1].strip().split()[0]
-                    if value.isdigit():
-                        value = int(value)
-                    player_info[item.split(':')[0].strip()] = value 
-
-            player_info = self._replace_keys(player_info)
-            print(f"Player details >>> {player_info}")
+            player_profile["url"] = url
+            
+            print(f"Player details >>> {player_profile}")
         except Exception as e:
             print(f"Error getting player info: {e}")
 
-        return player_info
+        except Exception as e:
+            print(f"Error getting market value: {e}")
 
-    def get_team_profile(self, url):
+        return player_profile
+    
+    def get_player_stats_from_team(self, url):
         """
-        Input: url pointing to the Kicker team info page: https://www.kicker.de/{team}/info/{competition}/{season}
-        Output: dictionary containing team attributes as follows: 'name': {team_name}, 'members': {members_count}, 'url': {url_to_kicker_info_page}, 'slug': {slugified_team_name}, '' 
+        Transfermarkt > Player stats page > Stats per season and competition
+        Input
+        Output  dictionary continaing player statistics
         """
-        team = {}
+        # https://www.transfermarkt.com/jamal-musiala/leistungsdaten/spieler/580195/plus/0?saison=2023
+        player_stats = {}
 
-        name = 'NA'
-        members = -1
         try:
             self.load_page(url)
-            team_info = self.driver.find_elements(By.XPATH, 
-                                                "//div[@class='kick__data-list']/child::div/div[@class='kick__data-list__value']") 
-            team["name"] = team_info[0].get_attribute("innerText")
-            team["members"] = (int(team_info[2].get_attribute("innerText").split()[0].replace('.', '')))
-            #team["url"] = url
-            team["id"] = url.split('/')[3]
+            player_stats_headers = self.driver.find_elements(By.XPATH, 
+                                                "//table[@class='items']/thead/tr/th")
+            player_stats_x = self.driver.find_elements(By.XPATH, 
+                                                "//table[@class='items']/tbody/tr[1]/child::*")
 
-            manager_info = self.driver.find_elements(By.XPATH, 
-                                                "//div[@class='kick__portrait-photo-holder']//img") 
-            if(len(manager_info) >= 2):
-                team["manager"] = manager_info[0].get_attribute("alt")
-                team["manager_nationality"] = manager_info[1].get_attribute("alt")
-
-            print(f"Team info >>> {team}")
-        except Exception as e:
-            print(f"Error getting team info: {e}")
-
-        return team
-    
-
-    def get_stadium_info(self,url):
-        """Gets stadium info from the page. 
-        >>> browser = KickerScraper()
-        >>> url_stadium = "https://www.kicker.de/fc-bayern-muenchen/team-stadion/bundesliga/2024-25"
-        >>> stadium = browser.get_stadium_info(url_stadium)
-        """
-        stadium = {}
-
-        name = 'NA'
-        totalCapacity = -1
-        try:
-            self.load_page(url)            
-            name = self.driver.find_element(By.XPATH, 
-                                        "//div[@class='kick__profile-data__grid-icon kick__site-padding']").get_attribute("innerText")
-
-            stadium["name"] = name.split("\n")[0]
-            stadium_info = self.driver.find_elements(By.XPATH, 
-                                                    "//td[@class='kick__t__a__l']/following-sibling::td") 
-
-            stadium["totalCapacity"] = int(stadium_info[0].get_attribute("innerText").replace('.', ''))
-
-            print(f"Stadium details >>> {stadium}")
-        except Exception as e:
-            print(f"Error getting stadium info: {e}")
-
-        return stadium
-    
-    def get_match_lineup(self,url):
-        """Gets line-up of home and away team on the match schema page.
-        Input
-        Output: dictionary with player's name as used on the schema page as key, and the player's id as value 
-
-        """
-        line_up = {}
-
-        try:
-            self.load_page(url)            
-            all_players = self.driver.find_elements(By.XPATH, 
-                                                "//div[@class='kick__card ']/div[@class='kick__site-padding']//a")
-
-            for player in all_players:
-                href = player.get_attribute("href")
-                if("spieler" in href):
-                    name = re.sub("[0-9,]", "", player.get_attribute("innerText")).strip()
-                    id = href.split("/")[3]
-                    rating = re.sub("[^0-9,]", "", player.get_attribute("innerText")).replace(",", ".")
-                    team_id = href.split("/")[-1]
-                    line_up.setdefault(name, [id, team_id, float(rating) if rating != '' else -1])
-
-            print(f"Match line-up details >>> {line_up}")
-        except Exception as e:
-            print(f"Error getting match line-up: {e}")
-
-        return line_up
-    
-    def add_player_ids_to_scoring_events(self, url, goals, line_up):
-        """
-        Add the player IDs to scorer and assist giving players in the goal / assist list
-        """
-        if not line_up:
-            line_up = self.get_match_lineup(url)
-
-        for goal in goals:
-            if goal["goal_scorer_name"] in line_up:
-                goal["goal_scorer_id"] = line_up[goal["goal_scorer_name"]][0]
-
-            if ("assist_provider_name" in goal) and (goal["assist_provider_name"] in line_up):
-                goal["goal_assist_provider_id"] = line_up[goal["assist_provider_name"]][0]
-
-        print(f"Enriched goal events >>> {goals}")
-        return goals
-    
-    def get_match_scorers_overview(self, goals):
-        home_team_scorers, away_team_scorers = [], []
-        scorers = []
-        for goal in goals:
-            if len(goal[0]) > 0:
-                l = list(goal.values())[:2]
-                l.insert(0, "home")
-            else:
-                l = list(reversed(goal.values()))[:2]
-                l.insert(0, "away")
-            
-            scorers.append(l)
-
-        for s in scorers:
-            s[1] = s[1].split('\n')[0].replace('Elfmeter', ('P')).replace('Eigentor', 'O') + " " + s[2].replace('\n', '')
-            #print(scorer_info)
-
-        [home_team_scorers.append(l[1]) if l[0] == 'home' else away_team_scorers.append(l[1]) for l in scorers]
-
-        print(f"{home_team_scorers} >>> {away_team_scorers}")
-
-        return home_team_scorers, away_team_scorers
-    
-    def _transform_team_ratings(self, line_up):
-        result = {}
-
-        for key, value in line_up.items():
-            if(value[2] == -1):
-                continue
-            club = value[1]  # Get the club id (second element)
-            player_data = [value[0], value[2]]  # Get player id and rating
-            
-            if club not in result:
-                result[club] = []
-            result[club].append(player_data)
-        return result
-    
-    def _validateItem(self, key):
-            keys = ['info', 'squad', 'stadium']
-            if(key in ['', 'Kader', 'Stadion']):
-                key = keys[['', 'Kader', 'Stadion'].index(key)]
-                isMemberOf = True
-            else:
-                isMemberOf = False
-
-            return isMemberOf, key
-
-    def _split_to_key_value(self, data):
-        # Split the string at '\n'
-        parts = data.split('\n')
-        if len(parts) == 2:  # Ensure that there are exactly two parts after splitting
-            key = parts[0].strip()
-            value = parts[1].strip()
-
-        return key, value
-    
-    def _replace_keys(self, my_dict):
-        # Dictionary mapping old keys to new keys
-        key_mapping = {
-            'Anstoß': 'date',
-            'Stadion': 'venue',
-            'Zuschauer': 'attendance',
-            'Position': 'position',
-            'Geboren': 'dateOfBirth',
-            'Größe': 'height',
-            'Gewicht': 'weight',
-            'Nation': 'nationality'
-        }
-
-        # Replace keys in the original dictionary
-        for old_key, new_key in key_mapping.items():
-            if old_key in my_dict:
-                my_dict[new_key] = my_dict.pop(old_key)
+            for header, stats in zip(player_stats_headers, player_stats_x):
+                if len(header.get_attribute("innerText")) <= 1:
+                    title = header.find_element(By.XPATH, "descendant::span").get_attribute("title")
+                else:
+                    title = header.get_attribute("innerText")
         
-        return my_dict
-    
-    # Function to convert the input string to desired format
-    def _convert_datetime_string(self, dt_string):
-        dt_obj = datetime.strptime(dt_string[2:], "%d.%m.%Y, %H:%M")
-
-        weekday_abbr = dt_string[:2]
-        weekday = weekday_abbr + dt_obj.strftime(", %d.%m.%Y")
-        time = dt_obj.strftime("%H:%M")    
-        return weekday, time
-
-    def _transform_goals(self, goals, home_team, away_team):
-        """ Transforms a list of goals as provided by the Kicker page on https://www.kicker.de/{fixture}/schema
-        Input: 
-        goals> list of goals as provided on Kicker page in the form of: 
-            [{0: '', 1: '', 2: '0\n:\n1', 3: "13'", 4: 'Itakura\nKopfball, Honorat'}, {0: 'Rexhbecaj\nLinksschuss, Michel', 1: "29'", 2: '1\n:\n1', 3: '', 4: ''}]
-        home_team, away_team: name of home and away teams in this fixture
-        Output: list of goal dictionaries: 'name': {team_name}, 'members': {members_count}, 'url': {url_to_kicker_info_page}, 'slug': {slugified_team_name}, '' 
-
-        Special treatment of Eigentor, Elfmeter, 
-
-        Gets a list of goals in the form of as desribed in the next test cases:
-        >>> browser = KickerScraper()
-        >>> td_goals = [{0: '', 1: '', 2: '0\\n:\\n1', 3: "13'", 4: 'Itakura\\nKopfball, Honorat'}, {0: '', 1: '', 2: '0\\n:\\n2', 3: "27'", 4: 'Cvancara\\nRechtsschuss, Weigl'}, {0: 'Rexhbecaj\\nLinksschuss, Michel', 1: "29'", 2: '1\\n:\\n2', 3: '', 4: ''}, {0: '', 1: '', 2: '1\\n:\\n3', 3: "37'", 4: 'Ngoumou\\nRechtsschuss, Omlin'}, {0: 'M. Bauer\\nRechtsschuss, Demirovic', 1: "41'", 2: '2\\n:\\n3', 3: '', 4: ''}, {0: 'Michel (Elfmeter)\\nLinksschuss, Engels', 1: "45'\\n+7", 2: '3\\n:\\n3', 3: '', 4: ''}, {0: 'Vargas\\nRechtsschuss, P. Tietz', 1: "76'", 2: '4\\n:\\n3', 3: '', 4: ''}, {0: '', 1: '', 2: '4\\n:\\n4', 3: "90'\\n+7", 4: 'Cvancara (Elfmeter)\\nRechtsschuss, Borges Sanches'}]
-        >>> goals = browser.transform_goals(td_goals, "home", "away")
-        >>> count = len(goals)
-        8
-        """
-        transformed_goals = []
-        print(f"Goals   >>> {goals}")
-        for goal in goals:
-            new_goal = {}
-
-            # Determine if goal was scored for home or away team
-            if goal[0] == '':
-                new_goal["goal_scored_for"] = away_team
-                new_goal["scoring_minute"] = goal[3].replace('\n', '')  # Use goal["3"] for away_team
-                scorer_info = goal[4]  # Use goal["4"] for away_team
-            else:
-                new_goal["goal_scored_for"] = home_team
-                new_goal["scoring_minute"] = goal[1].replace('\n', '')  # Use goal["1"] for home_team
-                scorer_info = goal[0]  # Use goal["0"] for home_team
-            
-            # Map the interim_result and remove "\n"
-            new_goal["interim_result"] = goal[2].replace('\n', '')
-            
-            # Transform scorer_info
-            if scorer_info:
-                scorer_parts = scorer_info.split('\n', 1)  # Split on the first '\n' if exists
-
-                new_goal["goal_scorer_name"] = re.split(r'\(Elfmeter\)|\(Eigentor\)', scorer_parts[0])[0].strip()
-                #new_goal["goal_scorer_name"] = scorer_parts[0].split(' (Elfmeter)')[0]  # Remove '(Elfmeter)' if exists
-
-                new_goal["is_penalty"] = '(Elfmeter)' in scorer_parts[0]
-                new_goal["is_own_goal"] = '(Eigentor)' in scorer_parts[0]
+                if len(stats.get_attribute("innerText")) == 0:
+                    value = stats.find_element(By.XPATH, "child::*[1]").get_attribute("title")
+                else:
+                    value = stats.get_attribute("innerText")
                 
-                #new_goal["goal_scorer_name"] = scorer_parts[0].split(' (Eigentor)')[0]  # Remove '(Eigentor)' if exists
+                player_stats[title] = [value]
+    
+            print(f"Player stats >>> {player_stats}")
+        except Exception as e:
+            print(f"Error getting player stats: {e}")
 
-                if len(scorer_parts) > 1:
-                    bodypart_and_assist = scorer_parts[1].split(', ')
-                    new_goal["bodypart"] = bodypart_and_assist[0]  # First part after '\n'
-                    
-                    if len(bodypart_and_assist) > 1:
-                        new_goal["assist_provider_name"] = bodypart_and_assist[1]  # After the comma
-                    
-            # Add to the transformed goals list
-            transformed_goals.append(new_goal)
+        return player_stats_x
+    
+    def get_market_values(self, url):
+        """
+        Transfermarkt > Player profile > Market value
+        https://www.transfermarkt.com/jamal-musiala/profil/spieler/580195
+        """
+        try:
+            self.load_page(url)
+        except Exception as e:
+            print(f"Error getting market values: {e}")
+        
+        # Wait for the iframe containing the button, if any, and switch to it
+        try:
+            iframe = WebDriverWait(self.driver, 8).until(
+                EC.presence_of_element_located((By.ID, "sp_message_iframe_953358"))  # Adjust the selector if needed
+            )
+            self.driver.switch_to.frame(iframe)
+        except TimeoutException as e:
+            pass  # No iframe found, proceed without switching
 
-        print(f"Transformed goals >>> {transformed_goals}")
-        return transformed_goals
+        # Wait for the button to be clickable
+        try:
+            button = WebDriverWait(self.driver, 4).until(
+                EC.element_to_be_clickable((By.CSS_SELECTOR, ".message-component.message-button.no-children.focusable.accept-all.sp_choice_type_11.first-focusable-el"))
+            )
+
+            # Click the button
+            button.click()
+        except TimeoutException as e:
+            pass  # No iframe found, proceed without switching
+
+        last_height = self.driver.execute_script("return document.body.scrollHeight")
+    
+        while True:
+            # Scroll down by 1000 pixels
+            self.driver.execute_script("window.scrollBy(0, 750);")
+                
+            # Wait for the page to load new content
+            time.sleep(2)
+                
+            # Calculate new scroll height and compare with last scroll height
+            new_height = self.driver.execute_script("return document.body.scrollHeight")
+                
+            if new_height == last_height:
+                break  # Break the loop if no new content is loaded
+                
+            last_height = new_height
+        
+        try:
+            market_values = []
+            market_value = self.driver.find_elements(By.XPATH, 
+                                                 "//div[@class='current-and-max svelte-18lvpom']/child::div/child::div")
+
+            for mv in market_value:
+                market_values.append(mv.get_attribute("innerText"))
+
+            print(f"Market_values >>> {market_values}")
+        except Exception as e:
+            print(f"Error getting market value: {e}")
+
+        return market_values
+    
+    
+    def _click_button_in_iframe(self, iframe="sp_message_iframe_953358", css_selector=".message-component.message-button.no-children.focusable.accept-all.sp_choice_type_11.first-focusable-el"):
+        # Wait for the iframe containing the button, if any, and switch to it
+        try:
+            iframe = WebDriverWait(self.driver, 10).until(
+                EC.presence_of_element_located((By.ID, iframe))  # Adjust the selector if needed
+            )
+            self.driver.switch_to.frame(iframe)
+        except TimeoutException as e:
+            pass  # No iframe found, proceed without switching
+
+        # Wait for the button to be clickable
+        try:
+            button = WebDriverWait(self.driver, 5).until(
+                EC.element_to_be_clickable((By.CSS_SELECTOR, css_selector))
+            )
+
+            # Click the button
+            button.click()
+        except TimeoutException as e:
+            pass  # No iframe found, proceed without switching
+
+        # Switch back to the default content if you switched to an iframe
+        self.driver.switch_to.default_content()
+        return
+    
+    def _scroll_current_page(self, start=0, stop=750):
+        last_height = self.driver.execute_script("return document.body.scrollHeight")
+    
+        while True:
+            # Scroll down by 1000 pixels
+            self.driver.execute_script("window.scrollBy(0, 750);")
+                
+            # Wait for the page to load new content
+            time.sleep(3)
+                
+            # Calculate new scroll height and compare with last scroll height
+            new_height = self.driver.execute_script("return document.body.scrollHeight")
+                
+            if new_height == last_height:
+                break  # Break the loop if no new content is loaded
+                
+            last_height = new_height
+ 
+        return
 
 if __name__ == '__main__':
     import doctest

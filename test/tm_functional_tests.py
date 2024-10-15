@@ -6,9 +6,7 @@ class KickerFunctionalTest(unittest.TestCase):
     def setUp(self):
         sys.path.insert(0, "../src")
         self.browser = TransfermarktScraper()
-        self.url_md = "https://www.kicker.de/bundesliga/spieltag/2023-24/1"
-        self.url_mi = "https://www.kicker.de/bremen-gegen-bayern-2023-bundesliga-4861795/spielinfo"
-        self.url_me = "https://www.kicker.de/wolfsburg-gegen-heidenheim-2023-bundesliga-4861971/schema"
+        self.url_md = "https://www.transfermarkt.com/"
     
     def tearDown(self) -> None:
         self.browser.tear_down()
@@ -27,56 +25,11 @@ class KickerFunctionalTest(unittest.TestCase):
         title = self.browser.get_driver().title
         self.assertIn("Bundesliga heute", title, "The title does not contain 'Bundesliga heute'")
 
-    def test_get_fixture_links(self):
-        fixture_links = self.browser.get_fixture_links(self.url_md)
-        self.assertIsInstance(fixture_links, list)
-        self.assertTrue(all(isinstance(link, str) for link in fixture_links))
-        self.assertTrue(len(fixture_links) == 9)
-
-    def test_get_match_info(self):
-        #self.browser.load_page(self.url_mi)
-        match_info = self.browser.get_match_details(self.url_mi)
-        self.assertIsInstance(match_info, dict)
-        self.assertTrue(len(match_info) == 9)
-
-    # def test_get_match_goals(self):
-    #     self.browser.load_page(self.url_me)
-    #     match_goals = self.browser.get_match_goals_info(self.url_me)
-    #     #self.assertIsInstance(match_goals, dict)
-    #     #self.assertTrue(len(match_goals) == 9)
-
-    def test_get_club_controller(self):
-        url_clubs = "https://www.kicker.de/bundesliga/teams/2023-24"
-        self.browser = TransfermarktScraper()
-
-        clubs = self.browser.get_teams_info_per_competition_and_season(url_clubs)
-
-        self.assertIsInstance(clubs, list)
-        self.assertTrue(len(clubs) == 18)
-
-    def test_get_all_players_from_team(self):
-        url_team_players = "https://www.kicker.de/bor-moenchengladbach/kader/bundesliga/2023-24"
-        self.browser = TransfermarktScraper()
-
-        players = self.browser.get_players_profile_from_team(url_team_players)
-
-        self.assertIsInstance(players, list)
-        self.assertTrue(len(players) == 27)
-        
-    def test_e2e(self):
-        url_teams = "https://www.kicker.de/bundesliga/teams/2023-24"
-        self.browser = TransfermarktScraper()
-
-        self.browser.get_all_per_season(url_teams)
-
-#        self.assertIsInstance(players, list)
-#       self.assertTrue(len(players) == 18)
 
 class TransfermarktUnitTest(unittest.TestCase):
     def setUp(self):
         sys.path.insert(0, "../src")
         self.browser = TransfermarktScraper()
-        self.url_ti = "https://www.kicker.de/bayer-04-leverkusen/info/bundesliga/2023-24"
         self.url_pi = "https://www.kicker.de/matthijs-de-ligt/spieler/bundesliga/2023-24/fc-bayern-muenchen"
         self.url_pii = "https://www.kicker.de/jordan-siebatcheu/spieler/bundesliga/2023-24/bor-moenchengladbach" 
         self.urls = [self.url_pi, self.url_pii, "https://www.kicker.de/jordan-siebatcheu/spieler/bundesliga/2023-24/bor-moenchengladbach"]
@@ -102,111 +55,123 @@ class TransfermarktUnitTest(unittest.TestCase):
         #self.url_mg = "https://www.kicker.de/dortmund-gegen-koeln-2023-bundesliga-4861967/schema"
 
         self.url_md = "https://www.transfermarkt.com/bundesliga/startseite/wettbewerb/L1/plus/?saison_id=2023"
+        self.url_club = "https://www.transfermarkt.com/bayern-munich/kader/verein/27/saison_id/2024/plus/1"
 
     def tearDown(self) -> None:
         self.browser.tear_down()
 
     def test_get_clubs_info(self):
+        # https://www.transfermarkt.com/bundesliga/startseite/wettbewerb/L1/plus/?saison_id=2023
         clubs_info = self.browser.get_teams_info_per_competition_and_season(self.url_md)
         self.assertIsInstance(clubs_info, list)
-        self.assertTrue(all(isinstance(link, str) for link in clubs_info))
+        self.assertTrue(all(isinstance(link, dict) for link in clubs_info)) # list of dicts with club name and url
         self.assertTrue(len(clubs_info) == 18)
 
-    def test_get_stadium_info(self):
-        self.browser = TransfermarktScraper()
-        url_stadium = "https://www.kicker.de/fc-bayern-muenchen/team-stadion/bundesliga/2024-25"
+    def test_get_club_portrait(self):
+        # https://www.transfermarkt.com/fc-bayern-munchen/datenfakten/verein/27
+# https://www.transfermarkt.com/fc-bayern-munchen/stadion/verein/27/saison_id/2024
+        clubs_info = self.browser.get_club_portrait("https://www.transfermarkt.com/fc-bayern-munchen/stadion/verein/27/saison_id/2024")
+        self.assertIsInstance(clubs_info, list)
+        self.assertTrue(all(isinstance(link, dict) for link in clubs_info)) # list of dicts with club name and url
+        self.assertTrue(len(clubs_info) == 18)
 
-        stadium = self.browser.get_stadium_info(url_stadium)
+    def test_get_stadium_overview(self):
+        # https://www.transfermarkt.com/fc-bayern-munchen/datenfakten/verein/27
+        clubs_info = self.browser.get_stadium_info("https://www.transfermarkt.com/fc-bayern-munchen/stadion/verein/27/saison_id/2024")
+        self.assertIsInstance(clubs_info, list)
+        self.assertTrue(all(isinstance(link, dict) for link in clubs_info)) # list of dicts with club name and url
+        self.assertTrue(len(clubs_info) == 18)
 
-        self.assertEqual("Allianz-Arena", stadium["name"])
-        self.assertEqual(75024, stadium["totalCapacity"])
+    def test_get_all_players_from_team(self):
+        # https://www.transfermarkt.com/bayern-munich/kader/verein/27/saison_id/2024/plus/1
+        clubs_urls = self.browser.get_all_players_from_team(self.url_club)
 
-    def test_get_stadium_info_with_wrong_url(self):
-        self.browser = TransfermarktScraper()
-        url_stadium = "https://www.kicker.de/afke-team/team-stadion/bundesliga/2024-25"
-
-        stadium = self.browser.get_stadium_info(url_stadium)
-
-        self.assertEqual("Allianz-Arena", stadium["name"])
-        self.assertEqual(75024, stadium["totalCapacity"])
-
-    def test_get_team(self):
-        self.browser = TransfermarktScraper()
-
-        team = self.browser.get_team_profile(self.url_ti)
-
-        self.assertIsInstance(team, dict)
-        self.assertTrue(len(team) == 4)
-        self.assertEqual("bayer-04-leverkusen", team["slug"])
-        self.assertEqual("Bayer 04 Leverkusen", team["name"])
-        self.assertEqual(62000, team["members"])
+        self.assertIsInstance(clubs_urls, list)
+        self.assertTrue(all(isinstance(link, str) for link in clubs_urls)) # list of urls of a club's players
+        self.assertTrue(len(clubs_urls) == 28)
 
     def test_get_player_profile(self):
         self.browser = TransfermarktScraper()
 
-        #  for number in (2, 4, 6, 8, 10):
-        #     with self.subTest(number=number):
-        #         assert is_even(number)
-        for case in self.test_cases:
-            with self.subTest(url=case["url"]):
-                player = self.browser.get_player_profile_from_team(case["url"])
+        player_profile = self.browser.get_player_profile_from_team("https://www.transfermarkt.com/alphonso-davies/profil/spieler/424204")
 
-                self.assertIsInstance(player, dict)
-                self.assertTrue(len(player) == 10)
+        self.assertIsInstance(player_profile, dict) # dict of player's attributes like name, birthdate, ...
+        self.assertTrue("last_name" in player_profile)
+        self.assertTrue("Position:" in player_profile)
+        
         #self.assertEqual("Matthijs de Ligt", player["name"])
         #self.assertEqual(188, player["height"])
 
-    def test_get_match_goals_info(self):
+    def test_get_player_stats(self):
         self.browser = TransfermarktScraper()
 
-        goals = self.browser.get_match_goals_info(self.url_mg)
+        player_stats = self.browser.get_player_stats_from_team("https://www.transfermarkt.com/jamal-musiala/leistungsdaten/spieler/580195/saison/2023/plus/1#gesamt")
+
+        self.assertIsInstance(player_stats, dict) # dict of a player stats
+        self.assertTrue(len(player_stats) == 14)
+        self.assertEqual("Competiton" in player_stats)
+        self.assertEqual("Minutes per goal" in player_stats)
+        #self.assertEqual(188, player["height"])
+
+    def test_get_market_values(self):
+        self.browser = TransfermarktScraper()
+
+        market_values = self.browser.get_market_values("https://www.transfermarkt.com/jamal-musiala/profil/spieler/580195")
+
+        self.assertIsInstance(market_values, dict)
+        self.assertTrue(len(market_values) == 10)
+        #self.assertEqual("Matthijs de Ligt", player["name"])
+        #self.assertEqual(188, player["height"])
+
+    def test_get_matchday_details(self):
+        self.browser = TransfermarktScraper()
+
+        md_details = self.browser.get_matchday_details("https://www.transfermarkt.com/bundesliga/spieltag/wettbewerb/L1/saison_id/2023/spieltag/1")
+
+        self.assertIsInstance(md_details, dict)
+        self.assertTrue(len(md_details) == 10)
+        #self.assertEqual("Matthijs de Ligt", player["name"])
+        #self.assertEqual(188, player["height"])
+
+    def test_get_match_details(self):
+        self.browser = TransfermarktScraper()
+
+        match_details = self.browser.get_match_details("https://www.transfermarkt.com/spielbericht/index/spielbericht/4095967")
+
+        self.assertIsInstance(match_details, dict)
+        self.assertTrue(len(match_details) == 10)
+        #self.assertEqual("Matthijs de Ligt", player["name"])
+        #self.assertEqual(188, player["height"])
+
+    def test_get_goal_details(self):
+        self.browser = TransfermarktScraper()
+
+        goal_details = self.browser.get_goals_details_per_match("https://www.transfermarkt.com/spielbericht/index/spielbericht/4095970")
+
+        self.assertIsInstance(goal_details, dict)
+        self.assertTrue(len(goal_details) == 10)
+        #self.assertEqual("Matthijs de Ligt", player["name"])
+        #self.assertEqual(188, player["height"])
+
+    def test_get_top_players(self):
+        self.browser = TransfermarktScraper()
+
+        goal_details = self.browser.get_top_players_per_match("https://www.transfermarkt.com/spielbericht/index/spielbericht/4095970")
+
+        self.assertIsInstance(goal_details, dict)
+        self.assertTrue(len(goal_details) == 10)
+        #self.assertEqual("Matthijs de Ligt", player["name"])
+        #self.assertEqual(188, player["height"])
+
+    def test_get_player_ratings(self):
+        self.browser = TransfermarktScraper()
+
+        goals = self.browser.get_player_ratings_per_match("https://www.transfermarkt.com/bayer-04-leverkusen_rb-leipzig/aufstellung/spielbericht/4095970")
 
         self.assertIsInstance(goals, list)
         self.assertTrue(len(goals) == 8)
         #self.assertEqual("Matthijs de Ligt", goals["name"])
-        #self.assertEqual(188, goals["height"])
-
-    def test_transform_goals(self):
-        self.browser = TransfermarktScraper()
-        kicker_goals = [{0: '', 1: '', 2: '0\n:\n1', 3: "13'", 4: 'Itakura\nKopfball, Honorat'}, {0: '', 1: '', 2: '0\n:\n2', 3: "27'", 4: 'Cvancara\nRechtsschuss, Weigl'}, {0: 'Rexhbecaj\nLinksschuss, Michel', 1: "29'", 2: '1\n:\n2', 3: '', 4: ''}, {0: '', 1: '', 2: '1\n:\n3', 3: "37'", 4: 'Ngoumou\nRechtsschuss, Omlin'}, {0: 'M. Bauer\nRechtsschuss, Demirovic', 1: "41'", 2: '2\n:\n3', 3: '', 4: ''}, {0: 'Michel (Elfmeter)\nLinksschuss, Engels', 1: "45'\n+7", 2: '3\n:\n3', 3: '', 4: ''}, {0: 'Vargas\nRechtsschuss, P. Tietz', 1: "76'", 2: '4\n:\n3', 3: '', 4: ''}, {0: '', 1: '', 2: '4\n:\n4', 3: "90'\n+7", 4: 'Cvancara (Elfmeter)\nRechtsschuss, Borges Sanches'}]
-        #kicker_goals = [{0: 'Malen\nRechtsschuss, F. Nmecha', 1: "88'", 2: '1\n:\n0', 3: '', 4: ''}]
-        home_team = 'Bayer 04 Leverkusen'
-        away_team = 'Bor. Mönchengladbach'
-        goals = self.browser._transform_goals(kicker_goals, home_team, away_team)
-
-        self.assertIsInstance(goals, list)
-        self.assertTrue(len(goals) == 2)
-        #self.assertEqual("Matthijs de Ligt", goals["name"])
-        #self.assertEqual(188, goals["height"])
-
-    def test_get_match_lineup(self):
-        self.browser = TransfermarktScraper()
-        line_up = self.browser.get_match_lineup(self.url_me)
-        self.assertIsInstance(line_up, dict)
-        #self.assertTrue(len(match_goals) == 9)
-
-    def test_enrich_scoring_events(self):
-        goals = [{'goal_scored_for': 'Bayer 04 Leverkusen', 'scoring_minute': "88'", 'interim_result': '1:0', 'goal_scorer_name': 'Malen', 'is_penalty': False, 'is_own_goal': False, 'bodypart': 'Rechtsschuss', 'assist_provider_name': 'F. Nmecha'}]
-        self.browser = TransfermarktScraper()
-        goals = self.browser.add_player_ids_to_scoring_events(self.url_mg, goals)
-        
-        self.assertIsInstance(goals, list)
-        self.assertTrue("goal_scorer_id" in goals[0])
-
-    def test_get_scorers_of_match_overview(self):
-        goals_info = [
-            {0: '', 1: '', 2: '0\n:\n1', 3: "13'", 4: 'Itakura\nKopfball, Honorat'}, {0: '', 1: '', 2: '0\n:\n2', 3: "27'", 4: 'Cvancara\nRechtsschuss, Weigl'}, 
-            {0: 'Rexhbecaj\nLinksschuss, Michel', 1: "29'", 2: '1\n:\n2', 3: '', 4: ''}, {0: '', 1: '', 2: '1\n:\n3', 3: "37'", 4: 'Ngoumou\nRechtsschuss, Omlin'}, 
-            {0: 'M. Bauer\nRechtsschuss, Demirovic', 1: "41'", 2: '2\n:\n3', 3: '', 4: ''}, {0: 'Michel (Elfmeter)\nLinksschuss, Engels', 1: "45'\n+7", 2: '3\n:\n3', 3: '', 4: ''}, 
-            {0: 'Vargas\nRechtsschuss, P. Tietz', 1: "76'", 2: '4\n:\n3', 3: '', 4: ''}, {0: '', 1: '', 2: '4\n:\n4', 3: "90'\n+7", 4: 'Cvancara (Elfmeter)\nRechtsschuss, Borges Sanches'}
-        ]
-
-        self.browser = TransfermarktScraper()
-        home_team_scorers, away_team_scorers = self.browser.get_match_scorers_overview(goals_info)
-
-        self.assertIsInstance(home_team_scorers, list)
-        self.assertIsInstance(away_team_scorers, list)
-
+        #self.assertEqual(188, goals["height"]))
 
 if __name__ == "__main__":
     sys.path.insert(0, "../src")

@@ -1,4 +1,5 @@
 import unittest
+import json
 from import_export_json import save_to_json
 
 class JSONUnitTests(unittest.TestCase):
@@ -84,3 +85,15 @@ class JSONUnitTests(unittest.TestCase):
     def test_save_dict_to_json_in_one_line(self):
         file_path = "match_wo_line.json"
         save_to_json(self.team_ratings, file_path)
+
+    def manual_testing(self):
+        file_path = "bl_2324.json"
+        with open(file_path, 'r', encoding='utf-8') as file:
+            data = json.load(file)
+        names = [goal["goal_scored_for"] for goal in data["goals"]]
+        goals_x_team = {}
+        for name in names:
+            if name in goals_x_team:   
+                goals_x_team[name] =+ 1
+            else:
+                goals_x_team[name] = 1 

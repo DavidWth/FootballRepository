@@ -56,8 +56,34 @@ class WebScraper:
             return False
         
 class KickerScraper(WebScraper):
+    club_codes = {}
+
     def __init__(self):
         super().__init__()
+
+    def get_club_codes(self, competition="Bundesliga", season="2023-24"):
+        key = competition[:2] + season[:4]
+
+        print(f"Clubs {key} in cache >>> {(key in KickerScraper.club_codes)}")
+
+        if key not in KickerScraper.club_codes:
+            clubs_info = self.get_teams_info_per_competition_and_season()
+            club_ids = [club["id"].split("-") for club in clubs_info]
+
+            codes = {}
+            for club_split in club_ids:
+                for part in club_split:
+                    if len(part) > 3:
+                        if part[:3].upper() in codes:
+                            continue
+                        
+                        codes[part[:3].upper()] = '-'.join(club_split)
+                        break
+
+            swapped_dict = {value: key for key, value in codes.items()}
+            KickerScraper.club_codes[key] = swapped_dict
+
+        return KickerScraper.club_codes[key]
 
     def get_fixture_links(self, url):
         """
@@ -83,25 +109,36 @@ class KickerScraper(WebScraper):
         return fixture_links
     
     def get_match_details(self, url):
+        """
+        """
         match_info = {}
         try:
             self.load_page(url)
             match = self.driver.find_element(By.XPATH, 
-                                            "//div[@class='kick__v100-gameCell kick__v100-gameCell--big']")
+                                        "//div[@class='kick__v100-gameCell kick__v100-gameCell--big']")
             
             teams = match.find_elements(By.XPATH, 
-                                            "//div[@class='kick__v100-gameCell kick__v100-gameCell--big']/descendant::div[@class='kick__v100-gameCell__team__name']")
+                                        "//div[@class='kick__v100-gameCell kick__v100-gameCell--big']/descendant::div[@class='kick__v100-gameCell__team__name']")
+
 
             results = match.find_elements(By.XPATH, 
-                                            "//div[@class='kick__v100-gameCell kick__v100-gameCell--big']/descendant::div[contains(@class, 'kick__v100-scoreBoard__scoreHolder ')]")
+                                        "//div[@class='kick__v100-gameCell kick__v100-gameCell--big']/descendant::div[contains(@class, 'kick__v100-scoreBoard__scoreHolder ')]")
             
             ratings = match.find_elements(By.XPATH, 
-                                          "//div[@class='kick__gameinfo kick__module-margin']/child::div")
+                                        "//div[@class='kick__gameinfo kick__module-margin']/child::div")
+
+            links = self.driver.find_elements(By.XPATH, 
+                                        "//div[@class='kick__v100-gameCell kick__v100-gameCell--big']/a")
 
             home_team = teams[0].get_attribute("innerText")
             away_team = teams[1].get_attribute("innerText")
             half_time_score = results[1].get_attribute("innerText").replace('\n', '')
             full_time_score = results[0].get_attribute("innerText").replace('\n', '')
+            rating = ratings[0].get_attribute("innerText").split('\n')[0].strip().replace(',', '.')
+            man_of_match = ratings[1].get_attribute("innerText").split('\n') #[0].strip() #, rating[1].split('\n')[2]]
+            referee = ratings[2].get_attribute("innerText").split('\n')
+            home_team_code = links[0].get_attribute("href").split("/")[3]
+            away_team_code = links[1].get_attribute("href").split("/")[3]
 
             fixture_info = self.driver.find_elements(By.XPATH, 
                                                     "//div[@class='kick__gameinfo__item kick__gameinfo__item--game-preview']/descendant::div[contains(@class, 'kick__gameinfo-block')]")
@@ -109,8 +146,12 @@ class KickerScraper(WebScraper):
                 key, value = self._split_to_key_value(element.get_attribute("innerText"))
                 match_info[key] = value
 
+            codes = self.get_club_codes()
+   
             match_info["home_team"] = home_team
+            match_info["home_team_code"] = codes[home_team_code]
             match_info["away_team"] = away_team
+            match_info["away_team_code"] = codes[away_team_code]
             match_info["half_time_score"] = half_time_score
             match_info["full_time_score"] = full_time_score
 
@@ -124,15 +165,9 @@ class KickerScraper(WebScraper):
             match_info["attendance"] = attendance
             match_info["is_soldOut"] = is_soldOut
 
-            rating = ratings[0].get_attribute("innerText").split('\n')[0].strip().replace(',', '.')
             match_info["rating"] = rating
-
-            man_of_match = ratings[1].get_attribute("innerText").split('\n') #[0].strip() #, rating[1].split('\n')[2]]
             match_info["man_of_match"] = [man_of_match[2], float(re.sub("[^0-9,]", "", man_of_match[4]).replace(",","."))]
-
-            referee = ratings[2].get_attribute("innerText").split('\n')
             match_info["referee"] = [referee[2], float(re.sub("[^0-9,]", "", referee[4]).replace(",","."))]
-
 
             print(f"Match info >>> {match_info}")
         except Exception as e:
@@ -194,12 +229,12 @@ class KickerScraper(WebScraper):
             # bl_season["season"] = "2023-24"
 
             # navigate to bundesliga clubs starting page
-            teams_info = self.get_teams_info_per_competition_and_season(url)
+            teams_info = self.get_teams_info_per_competition_and_season()
             print(f"Found {len(teams_info)} teams for season {url.split("/")[-1]}")
 
             teams = []
             players = []
-            for team_info in teams_info:
+            for team_info in teams_info[:3]:
                 # Call each team page and save all team and player information
                 team = self.get_team_profile(team_info["info"])
 
@@ -240,7 +275,7 @@ class KickerScraper(WebScraper):
             matchday = {}
             matchday["matchday"] = md
             fixtures = []
-            for fixture in fixture_links:
+            for fixture in fixture_links[:1]:
                 match_info = self.get_match_details(fixture.replace('analyse', 'spielinfo'))
                 match_goals_info = self.get_match_goals_info(fixture.replace('analyse', 'schema'))
                 home_team_scorers, away_team_scorers = self.get_match_scorers_overview(match_goals_info)
@@ -248,7 +283,9 @@ class KickerScraper(WebScraper):
                 match_info["away_team_scorers"] = away_team_scorers
 
                 line_up = self.get_match_lineup(fixture.replace('analyse', 'schema'))
-                goals = goals + self.add_player_ids_to_scoring_events(fixture.replace('analyse', 'schema'), self._transform_goals(match_goals_info, match_info["home_team"], match_info["away_team"]), line_up)
+                goals = goals + self.add_player_ids_to_scoring_events(
+                    fixture.replace('analyse', 'schema'), 
+                    self._transform_goals(match_goals_info, match_info["home_team_code"], match_info["away_team_code"]), line_up)
 
                 team_ratings = self._transform_team_ratings(line_up)
                 match_info["team_ratings"] = team_ratings
@@ -260,6 +297,9 @@ class KickerScraper(WebScraper):
         return season_fixtures, goals
 
     def get_teams_info_per_competition_and_season(self, url):
+        return self.get_teams_info_per_competition_and_season(url.split("/")[3], url.split("/")[-1])
+
+    def get_teams_info_per_competition_and_season(self, competition="bundesliga", season="2023-24"):
         """
         Starts at Kicker page with all teams from a dedicated season for a dedicated competition (eg all teams in 1.Bundesliga, season 2023-24).
         The retunrned dictionary contains all relevant links to teams profile page, to the overview page for players and stadium information page.
@@ -276,6 +316,7 @@ class KickerScraper(WebScraper):
         clubs_info = []
 
         try:
+            url = f"https://www.kicker.de/{competition}/teams/{season}"
             self.load_page(url)
             club_rows = self.driver.find_elements(By.XPATH, 
                                                 "//table[@class='kick__table kick__table--ranking kick__table--alternate kick__table--resptabelle']/descendant::tr")
@@ -294,7 +335,7 @@ class KickerScraper(WebScraper):
                         club[key] = cell.get_attribute('href')
 
                 clubs_info.append(club)
-                
+
             print(f"Club info >>> {clubs_info}")
         except Exception as e:
             print(f"Error getting clubs: {e}")
@@ -360,6 +401,8 @@ class KickerScraper(WebScraper):
         player_info = {}
 
         try:
+            codes = self.get_club_codes()
+
             self.load_page(url)
             name = self.driver.find_element(By.XPATH, 
                                                 "//div[@class='kick__vita__header__person-name-medium-h1']").get_attribute("innerText")
@@ -373,10 +416,8 @@ class KickerScraper(WebScraper):
                                                     "//div[@class='kick__vita__header__team-name']").get_attribute("innerText")
             except:
                 current_team = "NA"
-            print(f"Player name >>> {name} playing with >>> {current_team}")
 
             player_info["id"] = url.split("/")[3]
-
             name = name.split("(")
             if(len(name) == 1):
                 name = name[0].strip()
@@ -387,7 +428,10 @@ class KickerScraper(WebScraper):
             
             player_info["first_name"] = first_name.split("(")[0].strip()
             player_info["last_name"] = last_name
-            player_info["team_id"] = url.split("/")[-1]
+            
+            team_id = url.split("/")[-1]
+            player_info["club_code"] = codes[team_id]
+            player_info["team_id"] = team_id
             player_info["current_team"] = current_team.strip()
 
             player_details = self.driver.find_elements(By.XPATH,
@@ -616,6 +660,9 @@ class KickerScraper(WebScraper):
         print(f"Goals   >>> {goals}")
         for goal in goals:
             new_goal = {}
+
+            new_goal["home_team"] = away_team
+            new_goal["away_team"] = away_team
 
             # Determine if goal was scored for home or away team
             if goal[0] == '':

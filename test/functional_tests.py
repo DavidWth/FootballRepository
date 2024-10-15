@@ -81,6 +81,16 @@ class KickerFunctionalTest(unittest.TestCase):
 
         self.assertTrue(len(season_fixtures) == 24)
         self.assertIsInstance(goals, list)
+
+    def test_get_club_codes(self):
+        self.browser = KickerScraper()
+        club_codes = self.browser.get_club_codes()
+
+        # check if club codes are been taking from cache now
+        self.browser.get_club_codes()
+        
+        self.assertIsInstance(club_codes, dict)
+        self.assertTrue(len(club_codes) == 18)
         
 
 class KickerUnitTest(unittest.TestCase):
@@ -173,8 +183,8 @@ class KickerUnitTest(unittest.TestCase):
         self.browser = KickerScraper()
         kicker_goals = [{0: '', 1: '', 2: '0\n:\n1', 3: "13'", 4: 'Itakura\nKopfball, Honorat'}, {0: '', 1: '', 2: '0\n:\n2', 3: "27'", 4: 'Cvancara\nRechtsschuss, Weigl'}, {0: 'Rexhbecaj\nLinksschuss, Michel', 1: "29'", 2: '1\n:\n2', 3: '', 4: ''}, {0: '', 1: '', 2: '1\n:\n3', 3: "37'", 4: 'Ngoumou\nRechtsschuss, Omlin'}, {0: 'M. Bauer\nRechtsschuss, Demirovic', 1: "41'", 2: '2\n:\n3', 3: '', 4: ''}, {0: 'Michel (Elfmeter)\nLinksschuss, Engels', 1: "45'\n+7", 2: '3\n:\n3', 3: '', 4: ''}, {0: 'Vargas\nRechtsschuss, P. Tietz', 1: "76'", 2: '4\n:\n3', 3: '', 4: ''}, {0: '', 1: '', 2: '4\n:\n4', 3: "90'\n+7", 4: 'Cvancara (Elfmeter)\nRechtsschuss, Borges Sanches'}]
         #kicker_goals = [{0: 'Malen\nRechtsschuss, F. Nmecha', 1: "88'", 2: '1\n:\n0', 3: '', 4: ''}]
-        home_team = 'Bayer 04 Leverkusen'
-        away_team = 'Bor. Mönchengladbach'
+        home_team = 'MUE'
+        away_team = 'MOE'
         goals = self.browser._transform_goals(kicker_goals, home_team, away_team)
 
         self.assertIsInstance(goals, list)
@@ -209,6 +219,10 @@ class KickerUnitTest(unittest.TestCase):
 
         self.assertIsInstance(home_team_scorers, list)
         self.assertIsInstance(away_team_scorers, list)
+
+    def test_calculate_club_codes(self):
+        url = "https://www.kicker.de/bundesliga/teams/2023-24"
+
 
 
 if __name__ == "__main__":

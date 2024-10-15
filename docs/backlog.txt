@@ -21,6 +21,10 @@ Python Dictionarys, JSON, MongoDB
     Specification for data model entities like player and how they "behave" in documents / NoSql data structures
     - specify design for IDs in dicts
     - embed / relate data mainly in MongoDB (eg stadium is own document but used in club / teams document)
+Reference data
+    - How to deal with data which is used on many levels like match id
+        - re-generate each time. save to json, save to MongoDB, keep as class variable
+    > tactical solution: use class variables (and probably move later to file /DB)
 
 5Testing
 Testing Strategy
@@ -62,6 +66,8 @@ bug: get_players    >   missing players bc scraping is missing attributes
 Mobile development  >   maintain GitHub clean, add docu there, use Atlas MongoDB
 Bugs
 Goals   >   only last fixture goals in data / store                                         OK
+TM > refactor   >   check if xpath grabing can be generalized (eg goals, top players, ...)
+TM > IDs    >   use url id for all match related info
 
 Player names
     - Case1 >   Matheus Cunha (Matheus Santos Carneiro de Cunha)
@@ -120,6 +126,7 @@ Transfermarkt   >>> Match events analysis
                 - fixture, goals and assists are own attributes in the structure
                 - scorer and assist giver need to be x-checked with player repository to retrieve IDs 
 
+
 Implementation steps
 1 Season processing
     Kicker: overall processing takes to long, need to enable scraping / saving of assets to file / db
@@ -130,4 +137,13 @@ Implementation steps
             fixtures        >   MD 1-34 pages   >   match details pages
             goals/assists   >   MD 1-34 pages   >   match details pages
         Updates?
+
+
+Glossary
+club        >   Verein
+team        >   Mannschaft (die spielt?)
+squad       >   Gesamtheit der Spieler (?) 
+competition >   Wettbewerb (eg Bundesliga)
+matchday    >   Spieltag
+fixture     >   Spielpaarung (geplant, in der Zukunft?)
 
