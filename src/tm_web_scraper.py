@@ -199,7 +199,8 @@ class TransfermarktScraper(WebScraper):
 
             for i in range(0, len(club_rows), 2):
                 clubs_portrait[club_rows[i].get_attribute("innerText")] = club_rows[i+1].get_attribute("innerText")
-                
+            
+            clubs_portrait["url"] = url
             print(f"Club portrait >>> {clubs_portrait}")
         except Exception as e:
             print(f"Error getting club portrait: {e}")
@@ -341,7 +342,7 @@ class TransfermarktScraper(WebScraper):
             
             for i in range(0, len(player_data), 2):
                 player_profile[player_data[i].get_attribute('innerText')] = player_data[i+1].get_attribute('innerText')
-
+                print(f"Player data >>  {player_data[i].get_attribute('innerText')}  :: {player_data[i+1].get_attribute('innerText')}")
 
             player_profile["url"] = url
             

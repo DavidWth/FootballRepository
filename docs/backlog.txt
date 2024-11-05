@@ -138,6 +138,20 @@ Implementation steps
             goals/assists   >   MD 1-34 pages   >   match details pages
         Updates?
 
+Transfermarkt
+Approach    >   
+    first get raw data from pages
+    save data per concept / data item to json file (club (competition, season), players, matchdays, ...)
+        add proper keys to enable alter aggregation into data model
+    
+Files   >
+    naming convention   >   data_items_name_competition_season_date.json    (eg clubs_bundesliga_2023-24_11112024.json)
+        > date?season?
+Season processing
+    clubs           >   name, url
+    club details    >   name, founded, members   
+    stadium         >   name, capacity
+
 
 Glossary
 club        >   Verein

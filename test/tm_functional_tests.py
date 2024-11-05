@@ -69,15 +69,15 @@ class TransfermarktUnitTest(unittest.TestCase):
 
     def test_get_club_portrait(self):
         # https://www.transfermarkt.com/fc-bayern-munchen/datenfakten/verein/27
-# https://www.transfermarkt.com/fc-bayern-munchen/stadion/verein/27/saison_id/2024
-        clubs_info = self.browser.get_club_portrait("https://www.transfermarkt.com/fc-bayern-munchen/stadion/verein/27/saison_id/2024")
+        # https://www.transfermarkt.com/fc-bayern-munchen/stadion/verein/27/saison_id/2024
+        clubs_info = self.browser.get_club_portrait("https://www.transfermarkt.com/fc-bayern-munchen/datenfakten/verein/27")
         self.assertIsInstance(clubs_info, list)
         self.assertTrue(all(isinstance(link, dict) for link in clubs_info)) # list of dicts with club name and url
         self.assertTrue(len(clubs_info) == 18)
 
     def test_get_stadium_overview(self):
         # https://www.transfermarkt.com/fc-bayern-munchen/datenfakten/verein/27
-        clubs_info = self.browser.get_stadium_info("https://www.transfermarkt.com/fc-bayern-munchen/stadion/verein/27/saison_id/2024")
+        clubs_info = self.browser.get_stadium_overview("https://www.transfermarkt.com/fc-bayern-munchen/stadion/verein/27/saison_id/2024")
         self.assertIsInstance(clubs_info, list)
         self.assertTrue(all(isinstance(link, dict) for link in clubs_info)) # list of dicts with club name and url
         self.assertTrue(len(clubs_info) == 18)

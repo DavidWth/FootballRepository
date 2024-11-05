@@ -25,7 +25,7 @@ class WebScraper:
         user_agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/92.0.4515.159 Safari/537.36"
 
         chrome_options = Options()
-        #chrome_options.add_argument('--headless')
+        chrome_options.add_argument('--headless')
     
         # Set the custom User-Agent
         chrome_options.add_argument(f"--user-agent={user_agent}")
@@ -34,6 +34,7 @@ class WebScraper:
             service=Service(CHROMEDRIVER_PATH),
             options=chrome_options
         )
+
     
     def tear_down(self):
         self.driver.quit()
